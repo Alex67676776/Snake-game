@@ -1,0 +1,395 @@
+Snake
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, touch-action: manipulation">
+    <title>🐍 Змейка на телефон</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        body {
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 10px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 350px;
+            color: #e0e0e0;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .score {
+            background: #16213e;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: #ffd700;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .best {
+            background: #16213e;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: #ff6b6b;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        canvas {
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: #0f3460;
+            touch-action: none;  /* отключаем стандартные жесты браузера */
+            max-width: 100%;
+            height: auto;
+        }
+        .restart-btn {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            letter-spacing: 2px;
+            box-shadow: 0 5px 15px rgba(233,69,96,0.4);
+            transition: transform 0.1s;
+        }
+        .restart-btn:active {
+            transform: scale(0.95);
+            background: #c23152;
+        }
+        .game-over-text {
+            color: #e94560;
+            font-size: 1.5em;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(233,69,96,0.5);
+        }
+        @media (max-width: 400px) {
+            .header {
+                font-size: 1em;
+            }
+            canvas {
+                width: 95vw;
+                height: 95vw;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <span class="score">🍎 <span id="scoreDisplay">0</span></span>
+            <span class="best">🏆 <span id="bestDisplay">0</span></span>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <button class="restart-btn" id="restartButton">🔄 ИГРАТЬ</button>
+        <div id="message" style="color: #ffd700; font-size: 1em; min-height: 24px;"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const bestDisplay = document.getElementById('bestDisplay');
+        const restartButton = document.getElementById('restartButton');
+        const messageDiv = document.getElementById('message');
+
+        // Адаптивный размер канваса под экран телефона
+        function resizeCanvas() {
+            const maxSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.55, 400);
+            canvas.width = maxSize;
+            canvas.height = maxSize;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const gridSize = 20; // количество клеток по горизонтали и вертикали
+        let tileSize;        // размер одной клетки в пикселях
+        let snake, food, direction, nextDirection, score, gameOver, gameLoopInterval;
+        let bestScore = parseInt(localStorage.getItem('snakeBest')) || 0;
+        bestDisplay.textContent = bestScore;
+
+        function calculateTileSize() {
+            tileSize = canvas.width / gridSize;
+        }
+        calculateTileSize();
+
+        function initGame() {
+            calculateTileSize();
+            // Начальная змейка: 3 сегмента по центру
+            snake = [
+                {x: 10, y: 10},
+                {x: 9, y: 10},
+                {x: 8, y: 10}
+            ];
+            direction = 'right';
+            nextDirection = 'right';
+            score = 0;
+            gameOver = false;
+            scoreDisplay.textContent = score;
+            messageDiv.textContent = '';
+            placeFood();
+            if (gameLoopInterval) clearInterval(gameLoopInterval);
+            // Скорость игры (мс), можно менять для сложности
+            const speed = 130;
+            gameLoopInterval = setInterval(gameLoop, speed);
+        }
+
+        function placeFood() {
+            do {
+                food = {
+                    x: Math.floor(Math.random() * gridSize),
+                    y: Math.floor(Math.random() * gridSize)
+                };
+            } while (snake.some(segment => segment.x === food.x && segment.y === food.y));
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+
+            direction = nextDirection;
+            const head = snake[0];
+            let newHead;
+
+            switch(direction) {
+                case 'right': newHead = {x: head.x + 1, y: head.y}; break;
+                case 'left':  newHead = {x: head.x - 1, y: head.y}; break;
+                case 'down':  newHead = {x: head.x, y: head.y + 1}; break;
+                case 'up':    newHead = {x: head.x, y: head.y - 1}; break;
+                default: newHead = {x: head.x, y: head.y};
+            }
+
+            // Проверка столкновения со стенами
+            if (newHead.x < 0 || newHead.x >= gridSize || newHead.y < 0 || newHead.y >= gridSize) {
+                endGame();
+                return;
+            }
+
+            // Проверка столкновения с собой (кроме хвоста, который сдвинется)
+            if (snake.some(segment => segment.x === newHead.x && segment.y === newHead.y)) {
+                endGame();
+                return;
+            }
+
+            snake.unshift(newHead);
+
+            // Проверка, съела ли еду
+            if (newHead.x === food.x && newHead.y === food.y) {
+                score += 10;
+                scoreDisplay.textContent = score;
+                placeFood();
+                // Не удаляем хвост — змейка растёт
+            } else {
+                snake.pop();
+            }
+
+            draw();
+        }
+
+        function endGame() {
+            gameOver = true;
+            clearInterval(gameLoopInterval);
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('snakeBest', bestScore);
+                bestDisplay.textContent = bestScore;
+                messageDiv.innerHTML = '🎉 Новый рекорд!';
+            } else {
+                messageDiv.innerHTML = '💀 Игра окончена. Попробуй ещё!';
+            }
+            draw(); // отрисуем финальное состояние
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            calculateTileSize();
+
+            // Рисуем сетку (фон)
+            ctx.fillStyle = '#0a1628';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#16213e';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= gridSize; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * tileSize, 0);
+                ctx.lineTo(i * tileSize, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * tileSize);
+                ctx.lineTo(canvas.width, i * tileSize);
+                ctx.stroke();
+            }
+
+            // Рисуем еду
+            ctx.fillStyle = '#ff6b6b';
+            ctx.shadowColor = '#ff6b6b';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(
+                food.x * tileSize + tileSize / 2,
+                food.y * tileSize + tileSize / 2,
+                tileSize / 2.5,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Рисуем змейку
+            snake.forEach((segment, index) => {
+                if (index === 0) {
+                    // Голова
+                    ctx.fillStyle = '#4ecca3';
+                    ctx.shadowColor = '#4ecca3';
+                    ctx.shadowBlur = 8;
+                } else {
+                    // Тело
+                    const gradient = ctx.createLinearGradient(
+                        segment.x * tileSize, segment.y * tileSize,
+                        segment.x * tileSize + tileSize, segment.y * tileSize + tileSize
+                    );
+                    gradient.addColorStop(0, '#2ecc71');
+                    gradient.addColorStop(1, '#27ae60');
+                    ctx.fillStyle = gradient;
+                    ctx.shadowBlur = 3;
+                    ctx.shadowColor = '#2ecc71';
+                }
+                ctx.fillRect(
+                    segment.x * tileSize + 1.5,
+                    segment.y * tileSize + 1.5,
+                    tileSize - 3,
+                    tileSize - 3
+                );
+                ctx.shadowBlur = 0;
+
+                // Глаза для головы
+                if (index === 0) {
+                    ctx.fillStyle = 'white';
+                    const eyeSize = tileSize / 5;
+                    const pupilSize = tileSize / 9;
+                    let eyeX1, eyeY1, eyeX2, eyeY2;
+                    const cx = segment.x * tileSize + tileSize / 2;
+                    const cy = segment.y * tileSize + tileSize / 2;
+
+                    if (direction === 'right') {
+                        eyeX1 = cx + tileSize / 4; eyeY1 = cy - tileSize / 4;
+                        eyeX2 = cx + tileSize / 4; eyeY2 = cy + tileSize / 4;
+                    } else if (direction === 'left') {
+                        eyeX1 = cx - tileSize / 4; eyeY1 = cy - tileSize / 4;
+                        eyeX2 = cx - tileSize / 4; eyeY2 = cy + tileSize / 4;
+                    } else if (direction === 'up') {
+                        eyeX1 = cx - tileSize / 4; eyeY1 = cy - tileSize / 4;
+                        eyeX2 = cx + tileSize / 4; eyeY2 = cy - tileSize / 4;
+                    } else { // down
+                        eyeX1 = cx - tileSize / 4; eyeY1 = cy + tileSize / 4;
+                        eyeX2 = cx + tileSize / 4; eyeY2 = cy + tileSize / 4;
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(eyeX1, eyeY1, eyeSize, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(eyeX2, eyeY2, eyeSize, 0, Math.PI*2);
+                    ctx.fill();
+
+                    ctx.fillStyle = 'black';
+                    ctx.beginPath();
+                    ctx.arc(eyeX1, eyeY1, pupilSize, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(eyeX2, eyeY2, pupilSize, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            });
+        }
+
+        // Управление свайпами для телефона
+        let touchStartX = 0, touchStartY = 0;
+        const minSwipeDistance = 20;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameOver) return;
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        }, {passive: false});
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // запрещаем скролл страницы во время игры
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (gameOver) return;
+            if (!touchStartX || !touchStartY) return;
+
+            const touchEnd = e.changedTouches[0];
+            const dx = touchEnd.clientX - touchStartX;
+            const dy = touchEnd.clientY - touchStartY;
+
+            if (Math.abs(dx) < minSwipeDistance && Math.abs(dy) < minSwipeDistance) return;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Горизонтальный свайп
+                if (dx > 0 && direction !== 'left') {
+                    nextDirection = 'right';
+                } else if (dx < 0 && direction !== 'right') {
+                    nextDirection = 'left';
+                }
+            } else {
+                // Вертикальный свайп
+                if (dy > 0 && direction !== 'up') {
+                    nextDirection = 'down';
+                } else if (dy < 0 && direction !== 'down') {
+                    nextDirection = 'up';
+                }
+            }
+
+            touchStartX = 0;
+            touchStartY = 0;
+        });
+
+        // Поддержка клавиатуры для отладки на ПК
+        document.addEventListener('keydown', (e) => {
+            if (gameOver) return;
+            switch(e.key) {
+                case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; e.preventDefault(); break;
+                case 'ArrowLeft':  if (direction !== 'right') nextDirection = 'left'; e.preventDefault(); break;
+                case 'ArrowUp':    if (direction !== 'down') nextDirection = 'up'; e.preventDefault(); break;
+                case 'ArrowDown':  if (direction !== 'up') nextDirection = 'down'; e.preventDefault(); break;
+            }
+        });
+
+        restartButton.addEventListener('click', () => {
+            initGame();
+            draw();
+        });
+
+        // Запуск игры
+        initGame();
+        draw();
+    </script>
+</body>
+</html>
